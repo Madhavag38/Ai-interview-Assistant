@@ -40,3 +40,10 @@ coverage/
 # Temporary
 temp/
 tmp/
+**/node_modules/
+**/.env
+**/.env.local
+**/.next/
+dist/
+build/
+coverage/

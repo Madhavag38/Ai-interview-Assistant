@@ -1,38 +1,19 @@
-/**
- * Interview Routes
- */
-
-const express = require('express');
-const router = express.Router();
-const { protect } = require('../middleware/auth');
+const express = require("express");
 const {
-    startInterview,
-    submitAnswer,
-    logProctoringEvent,
-    getInterviews,
-    getInterview,
-    getStats,
-} = require('../controllers/interviewController');
+  startInterview,
+  submitAnswer,
+  getInterviews,
+  getInterview,
+} = require("../controllers/interviewcontroller.js");
+const { protect } = require("../middleware/auth.js");
 
-// All routes require authentication
-router.use(protect);
+const router = express.Router();
 
-// Start interview
-router.post('/start', startInterview);
+router.use(protect); // all routes require auth
 
-// Submit answer (with voice support)
-router.post('/submit-answer', submitAnswer);
-
-// Log proctoring events
-router.post('/proctoring', logProctoringEvent);
-
-// Get interview history
-router.get('/', getInterviews);
-
-// Get single interview
-router.get('/:id', getInterview);
-
-// Get user stats
-router.get('/stats/overview', getStats);
+router.post("/start", startInterview);
+router.post("/submit-answer", submitAnswer);
+router.get("/", getInterviews);
+router.get("/:id", getInterview);
 
 module.exports = router;
