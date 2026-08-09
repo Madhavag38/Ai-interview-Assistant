@@ -1,27 +1,24 @@
-/**
- * Interview Content - Enhanced with Voice & Proctoring
- * Features: Voice input, Text-to-Speech, Proctoring
- */
-
 "use client";
-
 import ChatContainer from "@/components/ChatContainer";
 import { InputBox } from "@/components/InputBox";
-import { VoiceRecorder } from "@/components/VoiceRecorder";
-import { TextToSpeech } from "@/components/TextToSpeech";
+
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
-import { useProctoring } from "@/hooks/useProctoring";
 import axiosInstance from "@/lib/axios";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect, useState, useRef } from "react";
-
+import React, { useEffect, useState } from "react";
 interface Message {
   id: string;
   content: string;
   isUser: boolean;
   timestamp: Date;
+}
+interface InterviewSession {
+  id: string;
+  score?: number;
+  feedback?: string;
+  isComplete?: boolean;
 }
 
 const TOTAL_QUESTIONS = 3;
@@ -37,14 +34,11 @@ const domainEmoji: Record<string, string> = {
   "Database Design": "🗄️",
   General: "🎯",
 };
-
 const InterviewContent = () => {
   const router = useRouter();
   const { isLoggedIn, isLoading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const domain = searchParams.get("domain") || "General";
-
-  // State
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
@@ -53,39 +47,7 @@ const InterviewContent = () => {
   const [questionsAnswered, setQuestionsAnswered] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState("");
-  const [feedback, setFeedback] = useState("");
-  
-  // Refs
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Proctoring
-  const { isProctoringActive, enableProctoring, disableProctoring } = useProctoring({
-    sessionId,
-    onViolation: (event) => {
-      // Log violation to backend
-      axiosInstance.post("/api/interviews/proctoring", {
-        sessionId,
-        eventType: event,
-        details: { timestamp: new Date().toISOString() },
-      }).catch(console.error);
-      
-      // Show warning to user
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          content: `⚠️ Proctoring Alert: ${event.replace('_', ' ')} detected. Please stay focused on the interview.`,
-          isUser: false,
-          timestamp: new Date(),
-        },
-      ]);
-    },
-  });
-
-  // ─── Effects ──────────────────────────────────────────────────────────────
-
+  const [sessionStartTime] = useState(Date.now());
   useEffect(() => {
     if (!authLoading && !isLoggedIn) {
       router.push("/login");
@@ -101,49 +63,29 @@ const InterviewContent = () => {
     const t = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [isInterviewComplete]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // ─── Methods ──────────────────────────────────────────────────────────────
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  const formatTime = (s: number) =>
-    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-
   const startInterview = async () => {
     try {
       setIsLoading(true);
       const { data } = await axiosInstance.post("/api/interviews/start", {
         domain,
       });
-
-      if (data?.data) {
-        setSessionId(data.data.sessionId);
-        setCurrentQuestion(data.data.question);
+      if (data) {
+        setSessionId(data.sessionId);
         setQuestionsAnswered(0);
         setMessages([
           {
             id: "1",
-            content: data.data.question || "Tell me about yourself",
+            content: data.question || "Tell me about yourself",
             isUser: false,
             timestamp: new Date(),
           },
         ]);
-
-        // Enable proctoring
-        enableProctoring();
       }
     } catch (error) {
-      console.error("Start interview error:", error);
       setMessages([
         {
           id: "1",
-          content: "Connection error. Please check your network.",
+          content: "Connection error.Please check your network",
           isUser: false,
           timestamp: new Date(),
         },
@@ -152,11 +94,10 @@ const InterviewContent = () => {
       setIsLoading(false);
     }
   };
-
+  const formatTime = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const handleSendMessage = async (userMessage: string) => {
-    if (!userMessage.trim() || !sessionId || isInterviewComplete) return;
-
-    // Add user message
+    if (!userMessage.trim() || !sessionId) return;
     setMessages((prev) => [
       ...prev,
       {
@@ -166,51 +107,36 @@ const InterviewContent = () => {
         timestamp: new Date(),
       },
     ]);
-
     setIsLoading(true);
-
     try {
       const { data } = await axiosInstance.post(
         "/api/interviews/submit-answer",
-        {
-          sessionId,
-          answer: userMessage,
-          domain,
-          questionsAnswered,
-        }
+        { sessionId, answer: userMessage, domain, questionsAnswered },
       );
-
-      if (data?.data) {
-        const { feedback, nextQuestion, isComplete, score } = data.data;
+      if (data) {
         const newCount = questionsAnswered + 1;
         setQuestionsAnswered(newCount);
-        setFeedback(feedback || "");
-
-        // Add AI feedback
-        if (feedback) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              content: feedback,
-              isUser: false,
-              timestamp: new Date(),
-            },
-          ]);
-        }
-
-        if (isComplete) {
-          setInterviewScore(score || 75);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            content:
+              data.feedback ||
+              "Good answer! Your response demonstrates solid understanding",
+            isUser: false,
+            timestamp: new Date(),
+          },
+        ]);
+        if (data.isComplete || newCount >= TOTAL_QUESTIONS) {
+          setInterviewScore(data.score || 75);
           setIsInterviewComplete(true);
-          disableProctoring();
-        } else if (nextQuestion) {
-          setCurrentQuestion(nextQuestion);
+        } else if (data.nextQuestion) {
           setTimeout(() => {
             setMessages((prev) => [
               ...prev,
               {
-                id: (Date.now() + 1).toString(),
-                content: nextQuestion,
+                id: (Date.now() + 2).toString(),
+                content: data.nextQuestion,
                 isUser: false,
                 timestamp: new Date(),
               },
@@ -219,12 +145,11 @@ const InterviewContent = () => {
         }
       }
     } catch (error) {
-      console.error("Submit answer error:", error);
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
-          content: "⚠️ Connection error. Please try again.",
+          content: "Connection error. Please try again",
           isUser: false,
           timestamp: new Date(),
         },
@@ -233,23 +158,9 @@ const InterviewContent = () => {
       setIsLoading(false);
     }
   };
-
-  const handleVoiceTranscript = (transcript: string) => {
-    if (transcript.trim()) {
-      handleSendMessage(transcript);
-    }
-  };
-
-  const handleEndInterview = () => {
-    disableProctoring();
-    router.push("/dashboard");
-  };
-
-  // ─── Render ──────────────────────────────────────────────────────────────
-
+  const handleEndInterview = () => router.push("/dashboard");
   if (authLoading) return null;
   if (!isLoggedIn) return null;
-
   const score = interviewScore ?? 0;
   const scoreLabel =
     score >= 80
@@ -258,27 +169,18 @@ const InterviewContent = () => {
           color: "text-green-600 dark:text-green-400",
         }
       : score >= 60
-      ? {
-          text: "Good effort! A few more sessions will get you there 💪",
-          color: "text-blue-600 dark:text-blue-400",
-        }
-      : {
-          text: "Keep practicing! Every session makes you stronger 🌟",
-          color: "text-orange-600 dark:text-orange-400",
-        };
-
+        ? {
+            text: "Good effort! A few more sessions will get you there 💪",
+            color: "text-blue-600 dark:text-blue-400",
+          }
+        : {
+            text: "Keep practicing! Every session makes you stronger 🌟",
+            color: "text-orange-600 dark:text-orange-400",
+          };
   return (
+    
     <div className="min-h-screen bg-background flex flex-col">
-      {/* ─── Proctoring Indicator ─── */}
-      {isProctoringActive && !isInterviewComplete && (
-        <div className="bg-green-500/10 border-b border-green-500/20 py-1.5 text-center">
-          <p className="text-xs text-green-600 dark:text-green-400">
-            🛡️ Proctoring active · Stay on this tab · No copy-paste
-          </p>
-        </div>
-      )}
-
-      {/* ─── Sticky Header ─── */}
+      {/* Sticky Header */}
       <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-16 z-30">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -300,7 +202,7 @@ const InterviewContent = () => {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  AI Mock Interview • {isInterviewComplete ? "Completed" : "Voice Enabled"}
+                  AI Mock Interview Session
                 </p>
               </div>
             </div>
@@ -318,8 +220,6 @@ const InterviewContent = () => {
                 </p>
               </div>
             )}
-
-            {/* Right: Controls */}
             <div className="flex items-center gap-2 flex-shrink-0">
               {!isInterviewComplete && (
                 <div className="hidden sm:flex items-center gap-1.5 bg-muted/50 border border-border/60 px-3 py-1.5 rounded-full">
@@ -339,12 +239,10 @@ const InterviewContent = () => {
                 }
                 className="rounded-full text-xs border-border/60 hover:border-destructive/50 hover:text-destructive hover:bg-destructive/5 transition-colors"
               >
-                {isInterviewComplete ? "📊 Dashboard" : "✕ Exit"}
+                {isInterviewComplete ? "Go to Dashboard" : "Exit"}
               </Button>
             </div>
           </div>
-
-          {/* Mobile progress */}
           {!isInterviewComplete && (
             <div className="sm:hidden mt-3">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
@@ -366,227 +264,137 @@ const InterviewContent = () => {
           )}
         </div>
       </div>
-
-      {/* ─── Main Content ─── */}
       <div className="flex-1 max-w-4xl w-full mx-auto flex flex-col">
         {isInterviewComplete ? (
-          <CompletionScreen
-            score={score}
-            scoreLabel={scoreLabel}
-            questionsAnswered={questionsAnswered}
-            domain={domain}
-            elapsedSeconds={elapsedSeconds}
-            onRetry={() => {
-              setIsInterviewComplete(false);
-              setInterviewScore(null);
-              setQuestionsAnswered(0);
-              setMessages([]);
-              setElapsedSeconds(0);
-              startInterview();
-            }}
-            onDashboard={handleEndInterview}
-          />
+          <div className="flex-1 flex items-center justify-center p-4 md:p-8">
+            <div className="w-full max-w-lg space-y-5">
+              {/* Score card */}
+              <Card className="p-8 border border-border/60 text-center">
+                <div className="text-3xl mb-3">🎉</div>
+                <h2 className="text-2xl font-black text-foreground mb-1">
+                  Interview Complete!
+                </h2>
+                <p className="text-sm text-muted-foreground mb-8">
+                  Here's how you performed
+                </p>
+
+                <ScoreRing score={score} />
+
+                <p className={`text-sm font-semibold mt-6 ${scoreLabel.color}`}>
+                  {scoreLabel.text}
+                </p>
+              </Card>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Questions", value: questionsAnswered, icon: "❓" },
+                  {
+                    label: "Domain",
+                    value: domain.split("/")[0],
+                    icon: domainEmoji[domain] || "🎯",
+                  },
+                  {
+                    label: "Duration",
+                    value: formatTime(elapsedSeconds),
+                    icon: "⏱",
+                  },
+                ].map((stat, i) => (
+                  <Card
+                    key={i}
+                    className="p-4 text-center border border-border/50"
+                  >
+                    <div className="text-lg mb-1">{stat.icon}</div>
+                    <p className="text-base font-bold text-foreground">
+                      {stat.value}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {stat.label}
+                    </p>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Score breakdown */}
+              <Card className="p-6 border border-border/50">
+                <p className="text-sm font-semibold text-foreground mb-4">
+                  Performance Breakdown
+                </p>
+                {[
+                  {
+                    label: "Technical Accuracy",
+                    pct: Math.min(score + 5, 100),
+                  },
+                  {
+                    label: "Communication Clarity",
+                    pct: Math.max(score - 8, 0),
+                  },
+                  {
+                    label: "Problem-Solving Approach",
+                    pct: Math.min(score + 2, 100),
+                  },
+                ].map((bar, i) => (
+                  <div key={i} className="mb-3 last:mb-0">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-muted-foreground">{bar.label}</span>
+                      <span className="font-semibold text-foreground">
+                        {bar.pct}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-1000"
+                        style={{ width: `${bar.pct}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </Card>
+
+              {/* Actions */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsInterviewComplete(false);
+                    setInterviewScore(null);
+                    setQuestionsAnswered(0);
+                    setMessages([]);
+                    setElapsedSeconds(0);
+                    startInterview();
+                  }}
+                  className="rounded-full border-border/60"
+                >
+                  🔄 Try Again
+                </Button>
+                <Button
+                  onClick={handleEndInterview}
+                  className="rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white font-semibold"
+                >
+                  Dashboard →
+                </Button>
+              </div>
+            </div>
+          </div>
         ) : (
           <>
             <ChatContainer messages={messages} isLoading={isLoading} />
             <div className="border-t border-border/50 bg-background">
-              {/* Voice Input & Text Input */}
-              <div className="max-w-4xl mx-auto px-4 py-2 space-y-2">
-                <VoiceRecorder
-                  onTranscript={handleVoiceTranscript}
-                  disabled={isLoading || isInterviewComplete}
-                  placeholder="Speak your answer clearly..."
-                />
-                <div className="flex items-center gap-2">
-                  <InputBox
-                    ref={inputRef}
-                    onSend={handleSendMessage}
-                    disabled={isLoading || isInterviewComplete}
-                  />
-                  {currentQuestion && !isLoading && (
-                    <TextToSpeech
-                      text={currentQuestion}
-                      autoSpeak={true}
-                      className="flex-shrink-0"
-                    />
-                  )}
-                </div>
-                <p className="text-[10px] text-muted-foreground text-center">
-                  🎤 Speak your answer or type it · Questions will be read aloud
+              {/* Tip bar */}
+              <div className="max-w-4xl mx-auto px-4 pt-2">
+                <p className="text-xs text-muted-foreground text-center">
+                  💡 Tip: Be specific and use examples from your experience for
+                  stronger answers
                 </p>
               </div>
+              <InputBox onSend={handleSendMessage} disabled={isLoading} />
             </div>
           </>
         )}
       </div>
-
-      {/* ─── Exit Confirmation Modal ─── */}
-      {showExitConfirm && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowExitConfirm(false);
-          }}
-        >
-          <Card className="w-full max-w-md p-6 border border-border shadow-2xl">
-            <div className="text-center">
-              <div className="text-4xl mb-4">⚠️</div>
-              <h2 className="text-xl font-bold text-foreground mb-2">
-                Exit Interview?
-              </h2>
-              <p className="text-sm text-muted-foreground mb-6">
-                Your progress will be lost. Are you sure you want to exit?
-              </p>
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowExitConfirm(false)}
-                  className="flex-1 rounded-full"
-                >
-                  Continue
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    setShowExitConfirm(false);
-                    handleEndInterview();
-                  }}
-                  className="flex-1 rounded-full"
-                >
-                  Exit Anyway
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };
-
-// ─── Sub-components ─────────────────────────────────────────────────────────
-
-function CompletionScreen({
-  score,
-  scoreLabel,
-  questionsAnswered,
-  domain,
-  elapsedSeconds,
-  onRetry,
-  onDashboard,
-}: {
-  score: number;
-  scoreLabel: { text: string; color: string };
-  questionsAnswered: number;
-  domain: string;
-  elapsedSeconds: number;
-  onRetry: () => void;
-  onDashboard: () => void;
-}) {
-  const domainEmojiMap: Record<string, string> = {
-    JavaScript: "🟨",
-    "JavaScript/Node.js": "🟨",
-    React: "⚛️",
-    Python: "🐍",
-    "Data Science": "📊",
-    DevOps: "⚙️",
-    "System Design": "🏗️",
-    "Database Design": "🗄️",
-    General: "🎯",
-  };
-
-  const formatTime = (s: number) =>
-    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-
-  return (
-    <div className="flex-1 flex items-center justify-center p-4 md:p-8">
-      <div className="w-full max-w-lg space-y-5">
-        {/* Score card */}
-        <Card className="p-8 border border-border/60 text-center">
-          <div className="text-3xl mb-3">🎉</div>
-          <h2 className="text-2xl font-black text-foreground mb-1">
-            Interview Complete!
-          </h2>
-          <p className="text-sm text-muted-foreground mb-8">
-            Here's how you performed
-          </p>
-
-          <ScoreRing score={score} />
-
-          <p className={`text-sm font-semibold mt-6 ${scoreLabel.color}`}>
-            {scoreLabel.text}
-          </p>
-        </Card>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "Questions", value: questionsAnswered, icon: "❓" },
-            {
-              label: "Domain",
-              value: domain.split("/")[0],
-              icon: domainEmojiMap[domain] || "🎯",
-            },
-            {
-              label: "Duration",
-              value: formatTime(elapsedSeconds),
-              icon: "⏱",
-            },
-          ].map((stat, i) => (
-            <Card key={i} className="p-4 text-center border border-border/50">
-              <div className="text-lg mb-1">{stat.icon}</div>
-              <p className="text-base font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
-            </Card>
-          ))}
-        </div>
-
-        {/* Score breakdown */}
-        <Card className="p-6 border border-border/50">
-          <p className="text-sm font-semibold text-foreground mb-4">
-            Performance Breakdown
-          </p>
-          {[
-            { label: "Technical Accuracy", pct: Math.min(score + 5, 100) },
-            { label: "Communication Clarity", pct: Math.max(score - 8, 0) },
-            { label: "Problem-Solving Approach", pct: Math.min(score + 2, 100) },
-          ].map((bar, i) => (
-            <div key={i} className="mb-3 last:mb-0">
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted-foreground">{bar.label}</span>
-                <span className="font-semibold text-foreground">{bar.pct}%</span>
-              </div>
-              <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-1000"
-                  style={{ width: `${bar.pct}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </Card>
-
-        {/* Actions */}
-        <div className="grid grid-cols-2 gap-3">
-          <Button
-            variant="outline"
-            onClick={onRetry}
-            className="rounded-full border-border/60"
-          >
-            🔄 Try Again
-          </Button>
-          <Button
-            onClick={onDashboard}
-            className="rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white font-semibold"
-          >
-            Dashboard →
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ScoreRing({ score }: { score: number }) {
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
@@ -640,13 +448,12 @@ function ProgressDots({ current, total }: { current: number; total: number }) {
             i < current
               ? "bg-gradient-to-r from-primary to-accent w-6"
               : i === current
-              ? "bg-primary/40 w-4 animate-pulse"
-              : "bg-border w-2"
+                ? "bg-primary/40 w-4 animate-pulse"
+                : "bg-border w-2"
           }`}
         />
       ))}
     </div>
   );
 }
-
 export default InterviewContent;

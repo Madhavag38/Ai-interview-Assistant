@@ -99,9 +99,8 @@ function ResumePanel({
       );
       setAnalysis(data.analysis);
       setStep("results");
-    } catch (error) {
-      const axiosError = error as { response?: { data?: { message?: string } } };
-      setError(axiosError?.response?.data?.message || "An error occurred");
+    } catch (error: any) {
+      setError(error?.response?.data?.message);
       setStep("upload");
     } finally {
       clearInterval(interval);
@@ -113,14 +112,19 @@ function ResumePanel({
     setError(null);
     setStep("upload");
   };
-  
+  const levelColor = (l: string) =>
+    l === "Senior"
+      ? "text-purple-500"
+      : l === "Mid"
+        ? "text-blue-500"
+        : "text-green-500";
 
   return (
     <Card className="border border-border/50 overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-border/40 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-linear-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center text-lg">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center text-lg">
             📄
           </div>
           <div>

@@ -8,6 +8,7 @@ const axiosInstance = axios.create({
     timeout: 15000,
 });
 
+// ── Request interceptor — attach token automatically ──────
 axiosInstance.interceptors.request.use(
     (config) => {
         // runs in browser only
@@ -22,6 +23,7 @@ axiosInstance.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
+// ── Response interceptor — handle 401 globally ────────────
 axiosInstance.interceptors.response.use(
     (response) => response,
     (error) => {
