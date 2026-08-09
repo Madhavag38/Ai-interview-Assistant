@@ -1,5 +1,5 @@
 const Groq = require("groq-sdk");
-const pdfjslib=require("pdfjs-dist/legacy/build/pdf.js");
+const pdfParse = require("pdf-parse");
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -15,18 +15,10 @@ const DOMAINS = [
   "Database Design",
   "General",
 ];
+
 async function extractTextFromPDF(buffer){
-    const uint8Array = new Uint8Array(buffer);
-    const loadingTask = pdfjslib.getDocument({data: uint8Array});
-    const pdf = await loadingTask.promise;
-    let textContent = "";
-    for(let i=1;i<= pdf.numPages;i++){
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        const strings = content.items.map(item => item.str);
-        textContent += strings.join(" ") + "\n";
-    }
-    return textContent;
+    const data = await pdfParse(buffer);
+    return data.text || "";
 } 
 const analyzeResume = async (req, res) => {
     try {
