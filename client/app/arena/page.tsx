@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import axiosInstance from "@/lib/axios";
-import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -83,7 +82,6 @@ export default function ArenaPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <Navbar />
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-8">
         {/* Header */}
         <div>

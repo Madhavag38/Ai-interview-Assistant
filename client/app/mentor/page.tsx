@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -23,7 +22,6 @@ export default function MentorPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <Navbar />
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-8">
         <div>
           <h1 className="text-3xl font-extrabold text-foreground">
