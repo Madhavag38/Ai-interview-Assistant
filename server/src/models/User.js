@@ -6,6 +6,17 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, lowercase: true, unique: true },
   password: { type: String, required: true, minlength: 6 },
+  role: { type: String, enum: ["student", "mentor", "admin"], default: "student" },
+  isVerified: { type: Boolean, default: true },
+  failedLoginAttempts: { type: Number, default: 0 },
+  lockUntil: { type: Date },
+  loginHistory: [
+    {
+      timestamp: { type: Date, default: Date.now },
+      ip: { type: String },
+      userAgent: { type: String },
+    },
+  ],
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -36,8 +36,9 @@ export function Navbar() {
   const navLinks = isLoggedIn
     ? [
         { href: "/dashboard", label: "Dashboard", icon: "⚡" },
-        { href: "/practice", label: "Practice", icon: "🎯" },
-        { href: "/history", label: "My Sessions", icon: "📊" },
+        { href: "/readiness", label: "Readiness", icon: "🎯" },
+        { href: "/arena", label: "Arena", icon: "⚔️" },
+        { href: "/admin", label: "Admin", icon: "🛡️" },
       ]
     : [
         { href: "/#features", label: "Features", icon: "✨" },
