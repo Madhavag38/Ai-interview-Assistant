@@ -48,6 +48,10 @@ const InterviewContent = () => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [sessionStartTime] = useState(Date.now());
+  const [currentDifficulty, setCurrentDifficulty] = useState<string>("Medium");
+  const [difficultyHistory, setDifficultyHistory] = useState<any[]>([]);
+  const [skippedCount, setSkippedCount] = useState<number>(0);
+
   useEffect(() => {
     if (!authLoading && !isLoggedIn) {
       router.push("/login");
@@ -63,15 +67,18 @@ const InterviewContent = () => {
     const t = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [isInterviewComplete]);
+
   const startInterview = async () => {
     try {
       setIsLoading(true);
       const { data } = await axiosInstance.post("/api/interviews/start", {
         domain,
+        initialDifficulty: "Medium",
       });
       if (data) {
         setSessionId(data.sessionId);
         setQuestionsAnswered(0);
+        setCurrentDifficulty(data.currentDifficulty || "Medium");
         setMessages([
           {
             id: "1",
@@ -85,7 +92,7 @@ const InterviewContent = () => {
       setMessages([
         {
           id: "1",
-          content: "Connection error.Please check your network",
+          content: "Connection error. Please check your network",
           isUser: false,
           timestamp: new Date(),
         },
@@ -94,8 +101,10 @@ const InterviewContent = () => {
       setIsLoading(false);
     }
   };
+
   const formatTime = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
   const handleSendMessage = async (userMessage: string) => {
     if (!userMessage.trim() || !sessionId) return;
     setMessages((prev) => [
@@ -111,24 +120,27 @@ const InterviewContent = () => {
     try {
       const { data } = await axiosInstance.post(
         "/api/interviews/submit-answer",
-        { sessionId, answer: userMessage, domain, questionsAnswered },
+        { sessionId, answer: userMessage, domain, questionsAnswered, totalRounds: TOTAL_QUESTIONS },
       );
       if (data) {
         const newCount = questionsAnswered + 1;
         setQuestionsAnswered(newCount);
+        if (data.currentDifficulty) setCurrentDifficulty(data.currentDifficulty);
+
         setMessages((prev) => [
           ...prev,
           {
             id: Date.now().toString(),
-            content:
-              data.feedback ||
-              "Good answer! Your response demonstrates solid understanding",
+            content: data.feedback || "Good response!",
             isUser: false,
             timestamp: new Date(),
           },
         ]);
+
         if (data.isComplete || newCount >= TOTAL_QUESTIONS) {
           setInterviewScore(data.score || 75);
+          if (data.difficultyHistory) setDifficultyHistory(data.difficultyHistory);
+          if (data.skippedQuestionsCount) setSkippedCount(data.skippedQuestionsCount);
           setIsInterviewComplete(true);
         } else if (data.nextQuestion) {
           setTimeout(() => {
@@ -158,10 +170,67 @@ const InterviewContent = () => {
       setIsLoading(false);
     }
   };
+
+  const handleSkipQuestion = async () => {
+    if (!sessionId || isLoading || isInterviewComplete) return;
+    setIsLoading(true);
+    try {
+      const { data } = await axiosInstance.post("/api/interviews/skip-question", {
+        sessionId,
+        questionsAnswered,
+        totalRounds: TOTAL_QUESTIONS,
+      });
+
+      if (data) {
+        const newCount = questionsAnswered + 1;
+        setQuestionsAnswered(newCount);
+        if (data.currentDifficulty) setCurrentDifficulty(data.currentDifficulty);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            content: "⏩ Question skipped.",
+            isUser: true,
+            timestamp: new Date(),
+          },
+        ]);
+
+        if (data.isComplete || newCount >= TOTAL_QUESTIONS) {
+          if (data.difficultyHistory) setDifficultyHistory(data.difficultyHistory);
+          setIsInterviewComplete(true);
+        } else if (data.nextQuestion) {
+          setTimeout(() => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: (Date.now() + 2).toString(),
+                content: data.nextQuestion,
+                isUser: false,
+                timestamp: new Date(),
+              },
+            ]);
+          }, 500);
+        }
+      }
+    } catch (error) {
+      console.error("Skip error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleEndInterview = () => router.push("/dashboard");
   if (authLoading) return null;
   if (!isLoggedIn) return null;
   const score = interviewScore ?? 0;
+
+  const difficultyColors: Record<string, string> = {
+    Easy: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30",
+    Medium: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30",
+    Hard: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30",
+  };
+
   const scoreLabel =
     score >= 80
       ? {
@@ -177,8 +246,8 @@ const InterviewContent = () => {
             text: "Keep practicing! Every session makes you stronger 🌟",
             color: "text-orange-600 dark:text-orange-400",
           };
+
   return (
-    
     <div className="min-h-screen bg-background flex flex-col">
       {/* Sticky Header */}
       <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-16 z-30">
@@ -195,14 +264,13 @@ const InterviewContent = () => {
                     {domain} Interview
                   </h1>
                   {!isInterviewComplete && (
-                    <span className="flex items-center gap-1 text-xs bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                      Live
+                    <span className={`text-xs border px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${difficultyColors[currentDifficulty] || difficultyColors.Medium}`}>
+                      ⚡ {currentDifficulty}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  AI Mock Interview Session
+                  Adaptive AI Interview Engine
                 </p>
               </div>
             </div>
@@ -222,12 +290,23 @@ const InterviewContent = () => {
             )}
             <div className="flex items-center gap-2 flex-shrink-0">
               {!isInterviewComplete && (
-                <div className="hidden sm:flex items-center gap-1.5 bg-muted/50 border border-border/60 px-3 py-1.5 rounded-full">
-                  <span className="text-xs text-muted-foreground">⏱</span>
-                  <span className="text-sm font-mono font-semibold text-foreground tabular-nums">
-                    {formatTime(elapsedSeconds)}
-                  </span>
-                </div>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSkipQuestion}
+                    disabled={isLoading}
+                    className="rounded-full text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    ⏩ Skip
+                  </Button>
+                  <div className="hidden sm:flex items-center gap-1.5 bg-muted/50 border border-border/60 px-3 py-1.5 rounded-full">
+                    <span className="text-xs text-muted-foreground">⏱</span>
+                    <span className="text-sm font-mono font-semibold text-foreground tabular-nums">
+                      {formatTime(elapsedSeconds)}
+                    </span>
+                  </div>
+                </>
               )}
               <Button
                 variant="outline"
@@ -243,25 +322,6 @@ const InterviewContent = () => {
               </Button>
             </div>
           </div>
-          {!isInterviewComplete && (
-            <div className="sm:hidden mt-3">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                <span>
-                  Q{Math.min(questionsAnswered + 1, TOTAL_QUESTIONS)} of{" "}
-                  {TOTAL_QUESTIONS}
-                </span>
-                <span className="font-mono">{formatTime(elapsedSeconds)}</span>
-              </div>
-              <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-700"
-                  style={{
-                    width: `${(questionsAnswered / TOTAL_QUESTIONS) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
         </div>
       </div>
       <div className="flex-1 max-w-4xl w-full mx-auto flex flex-col">
@@ -275,7 +335,7 @@ const InterviewContent = () => {
                   Interview Complete!
                 </h2>
                 <p className="text-sm text-muted-foreground mb-8">
-                  Here's how you performed
+                  Adaptive Interview Progression Summary
                 </p>
 
                 <ScoreRing score={score} />
@@ -285,14 +345,33 @@ const InterviewContent = () => {
                 </p>
               </Card>
 
+              {/* Adaptive Difficulty Progression Steps */}
+              {difficultyHistory.length > 0 && (
+                <Card className="p-6 border border-border/50">
+                  <p className="text-sm font-semibold text-foreground mb-3">
+                    📈 Adaptive Difficulty Progression
+                  </p>
+                  <div className="space-y-2">
+                    {difficultyHistory.map((stepItem, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-lg bg-muted/40 border border-border/40">
+                        <span className="font-medium text-foreground">Step {stepItem.step}: {stepItem.question?.substring(0, 35)}...</span>
+                        <span className={`px-2 py-0.5 rounded-full font-semibold ${difficultyColors[stepItem.difficulty] || difficultyColors.Medium}`}>
+                          {stepItem.wasSkipped ? "Skipped" : stepItem.difficulty}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
               {/* Stats row */}
               <div className="grid grid-cols-3 gap-3">
                 {[
                   { label: "Questions", value: questionsAnswered, icon: "❓" },
                   {
-                    label: "Domain",
-                    value: domain.split("/")[0],
-                    icon: domainEmoji[domain] || "🎯",
+                    label: "Peak Difficulty",
+                    value: currentDifficulty,
+                    icon: "⚡",
                   },
                   {
                     label: "Duration",
@@ -314,42 +393,6 @@ const InterviewContent = () => {
                   </Card>
                 ))}
               </div>
-
-              {/* Score breakdown */}
-              <Card className="p-6 border border-border/50">
-                <p className="text-sm font-semibold text-foreground mb-4">
-                  Performance Breakdown
-                </p>
-                {[
-                  {
-                    label: "Technical Accuracy",
-                    pct: Math.min(score + 5, 100),
-                  },
-                  {
-                    label: "Communication Clarity",
-                    pct: Math.max(score - 8, 0),
-                  },
-                  {
-                    label: "Problem-Solving Approach",
-                    pct: Math.min(score + 2, 100),
-                  },
-                ].map((bar, i) => (
-                  <div key={i} className="mb-3 last:mb-0">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">{bar.label}</span>
-                      <span className="font-semibold text-foreground">
-                        {bar.pct}%
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-1000"
-                        style={{ width: `${bar.pct}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </Card>
 
               {/* Actions */}
               <div className="grid grid-cols-2 gap-3">
@@ -383,8 +426,7 @@ const InterviewContent = () => {
               {/* Tip bar */}
               <div className="max-w-4xl mx-auto px-4 pt-2">
                 <p className="text-xs text-muted-foreground text-center">
-                  💡 Tip: Be specific and use examples from your experience for
-                  stronger answers
+                  💡 Tip: The AI dynamically adapts question difficulty based on your answers!
                 </p>
               </div>
               <InputBox onSend={handleSendMessage} disabled={isLoading} />
