@@ -39,6 +39,7 @@ const InterviewContent = () => {
   const { isLoggedIn, isLoading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const domain = searchParams.get("domain") || "General";
+  const company = searchParams.get("company") || "General";
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
@@ -73,6 +74,7 @@ const InterviewContent = () => {
       setIsLoading(true);
       const { data } = await axiosInstance.post("/api/interviews/start", {
         domain,
+        company,
         initialDifficulty: "Medium",
       });
       if (data) {
